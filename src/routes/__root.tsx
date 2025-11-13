@@ -34,7 +34,7 @@ export const Route = createRootRoute({
   component: () => (
     <RootDocument>
       <Outlet />
-      <TanStackRouterDevtools />
+      {import.meta.env.DEV && <TanStackRouterDevtools />}
     </RootDocument>
   ),
 })
