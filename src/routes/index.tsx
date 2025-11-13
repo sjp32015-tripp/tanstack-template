@@ -163,7 +163,7 @@ function LandingPage() {
                 </li>
               </ul>
               <a 
-                href="https://buy.stripe.com/7sYSkcgENfZ50ZD8dFgjc02"
+                href="https://buy.stripe.com/7sY5kCgENfZ50ZD8dFgjc02"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full py-3 font-semibold text-center text-white transition-all duration-200 border-2 rounded-lg border-blue-600/50 hover:bg-blue-600/20 hover:border-blue-500"
