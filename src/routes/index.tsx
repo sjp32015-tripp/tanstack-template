@@ -10,7 +10,7 @@ function LandingPage() {
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-white">Ground Game Guidance</h1>
             <a 
-              href="https://buy.stripe.com/bJe4gydsSikr7o1dxZgjc00"
+              href="https://buy.stripe.com/fZu6oG1JT4gng8V0eb"
               target="_blank"
               rel="noopener noreferrer"
               className="px-6 py-2 text-sm font-semibold text-white transition-all duration-200 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-lg hover:shadow-blue-500/30"
@@ -31,7 +31,7 @@ function LandingPage() {
               A welcoming community dedicated to personal growth, healing, and collective empowerment through trauma-informed support and guidance.
             </p>
             <a 
-              href="https://buy.stripe.com/bJe4gydsSikr7o1dxZgjc00"
+              href="https://buy.stripe.com/fZu6oG1JT4gng8V0eb"
               target="_blank"
               rel="noopener noreferrer"
               className="inline-block px-10 py-4 text-lg font-semibold text-white transition-all duration-200 transform rounded-lg shadow-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/40"
@@ -124,7 +124,7 @@ function LandingPage() {
                 </li>
               </ul>
               <a 
-                href="https://buy.stripe.com/bJe4gydsSikr7o1dxZgjc00"
+                href="https://buy.stripe.com/fZu6oG1JT4gng8V0eb"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full py-3 font-semibold text-center text-white transition-all duration-200 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-lg hover:shadow-blue-500/30"
