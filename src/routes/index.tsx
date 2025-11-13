@@ -1,379 +1,245 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
-import { Settings } from 'lucide-react'
-import {
-  SettingsDialog,
-  ChatMessage,
-  LoadingIndicator,
-  ChatInput,
-  Sidebar,
-  WelcomeScreen,
-  TopBanner
-} from '../components'
-import { useConversations, useAppState, store, actions } from '../store'
-import { genAIResponse, type Message } from '../utils'
+import { Users, Shield, Heart, Check } from 'lucide-react'
 
-function Home() {
-  const {
-    conversations,
-    currentConversationId,
-    currentConversation,
-    setCurrentConversationId,
-    createNewConversation,
-    updateConversationTitle,
-    deleteConversation,
-    addMessage,
-  } = useConversations()
-  
-  const { isLoading, setLoading, getActivePrompt } = useAppState()
-
-  // Memoize messages to prevent unnecessary re-renders
-  const messages = useMemo(() => currentConversation?.messages || [], [currentConversation]);
-
-  // Local state
-  const [input, setInput] = useState('')
-  const [editingChatId, setEditingChatId] = useState<string | null>(null)
-  const [editingTitle, setEditingTitle] = useState('')
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const [pendingMessage, setPendingMessage] = useState<Message | null>(null)
-  const [error, setError] = useState<string | null>(null);
-
-  const scrollToBottom = useCallback((smooth: boolean = false) => {
-    if (messagesContainerRef.current) {
-      messagesContainerRef.current.scrollTo({
-        top: messagesContainerRef.current.scrollHeight,
-        behavior: smooth ? 'smooth' : 'auto'
-      })
-    }
-  }, []);
-
-  // Scroll to bottom when messages change or loading state changes
-  useEffect(() => {
-    scrollToBottom(false)
-  }, [messages, scrollToBottom])
-
-  // Smooth scroll during streaming
-  useEffect(() => {
-    if (pendingMessage && isLoading) {
-      scrollToBottom(true)
-    }
-  }, [pendingMessage, isLoading, scrollToBottom])
-
-  const createTitleFromInput = useCallback((text: string) => {
-    const words = text.trim().split(/\s+/)
-    const firstThreeWords = words.slice(0, 3).join(' ')
-    return firstThreeWords + (words.length > 3 ? '...' : '')
-  }, []);
-
-  // Helper function to process AI response
-  const processAIResponse = useCallback(async (conversationId: string, userMessage: Message) => {
-    try {
-      // Get active prompt
-      const activePrompt = getActivePrompt(store.state)
-      let systemPrompt
-      if (activePrompt) {
-        systemPrompt = {
-          value: activePrompt.content,
-          enabled: true,
-        }
-      }
-
-      // Get AI response
-      const response = await genAIResponse({
-        data: {
-          messages: [...messages, userMessage],
-          systemPrompt,
-        },
-      })
-
-      const reader = response.body?.getReader()
-      if (!reader) {
-        throw new Error('No reader found in response')
-      }
-
-      const decoder = new TextDecoder()
-
-      let done = false
-      let newMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant' as const,
-        content: '',
-      }
-      let buffer = '' // Buffer to accumulate partial JSON chunks
-      let pendingTextQueue: string[] = [] // Queue of text chunks to render
-      let isRendering = false
-
-      // Smooth character-by-character rendering with adaptive speed
-      const renderTextSmoothly = async () => {
-        if (isRendering) return
-        isRendering = true
-
-        while (pendingTextQueue.length > 0) {
-          const chunk = pendingTextQueue.shift()!
-
-          // Adaptive rendering: faster for code blocks, smoother for regular text
-          const isCodeBlock = newMessage.content.includes('```') &&
-                             newMessage.content.split('```').length % 2 === 0
-
-          // Characters per frame and delay based on content type
-          const charsPerFrame = isCodeBlock ? 5 : 2 // Faster for code
-          const delay = isCodeBlock ? 2 : 5 // Shorter delay for code
-
-          for (let i = 0; i < chunk.length; i += charsPerFrame) {
-            const slice = chunk.slice(i, i + charsPerFrame)
-            newMessage = {
-              ...newMessage,
-              content: newMessage.content + slice,
-            }
-            setPendingMessage({ ...newMessage })
-
-            // Dynamic delay for natural typing rhythm
-            // ~200-400 chars per second for text, ~500 chars per second for code
-            await new Promise(resolve => setTimeout(resolve, delay))
-          }
-        }
-
-        isRendering = false
-      }
-
-      const scheduleUIUpdate = (text: string) => {
-        pendingTextQueue.push(text)
-        renderTextSmoothly()
-      }
-
-      while (!done) {
-        const out = await reader.read()
-        done = out.done
-        if (!done && out.value) {
-          // Decode the chunk and add to buffer
-          buffer += decoder.decode(out.value, { stream: true })
-
-          // Split by newlines to get complete JSON objects
-          const lines = buffer.split('\n')
-
-          // Keep the last incomplete line in the buffer
-          buffer = lines.pop() || ''
-
-          // Process each complete line
-          for (const line of lines) {
-            if (line.trim()) {
-              try {
-                const json = JSON.parse(line)
-                if (json.type === 'content_block_delta' && json.delta?.text) {
-                  scheduleUIUpdate(json.delta.text)
-                }
-              } catch (e) {
-                console.error('Error parsing streaming response:', e, 'Line:', line)
-              }
-            }
-          }
-        }
-      }
-
-      // Wait for any remaining text to finish rendering
-      while (pendingTextQueue.length > 0 || isRendering) {
-        await new Promise(resolve => setTimeout(resolve, 50))
-      }
-
-      setPendingMessage(null)
-      if (newMessage.content.trim()) {
-        // Add AI message to Convex
-        console.log('Adding AI response to conversation:', conversationId)
-        await addMessage(conversationId, newMessage)
-      }
-    } catch (error) {
-      console.error('Error in AI response:', error)
-      // Add an error message to the conversation
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant' as const,
-        content: 'Sorry, I encountered an error generating a response. Please set the required API keys in your environment variables.',
-      }
-      await addMessage(conversationId, errorMessage)
-    }
-  }, [messages, getActivePrompt, addMessage]);
-
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim() || isLoading) return
-
-    const currentInput = input
-    setInput('') // Clear input early for better UX
-    setLoading(true)
-    setError(null)
-    
-    const conversationTitle = createTitleFromInput(currentInput)
-
-    try {
-      // Create the user message object
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        role: 'user' as const,
-        content: currentInput.trim(),
-      }
-      
-      let conversationId = currentConversationId
-
-      // If no current conversation, create one in Convex first
-      if (!conversationId) {
-        try {
-          console.log('Creating new Convex conversation with title:', conversationTitle)
-          // Create a new conversation with our title
-          const convexId = await createNewConversation(conversationTitle)
-          
-          if (convexId) {
-            console.log('Successfully created Convex conversation with ID:', convexId)
-            conversationId = convexId
-            
-            // Add user message directly to Convex
-            console.log('Adding user message to Convex conversation:', userMessage.content)
-            await addMessage(conversationId, userMessage)
-          } else {
-            console.warn('Failed to create Convex conversation, falling back to local')
-            // Fallback to local storage if Convex creation failed
-            const tempId = Date.now().toString()
-            const tempConversation = {
-              id: tempId,
-              title: conversationTitle,
-              messages: [],
-            }
-            
-            actions.addConversation(tempConversation)
-            conversationId = tempId
-            
-            // Add user message to local state
-            actions.addMessage(conversationId, userMessage)
-          }
-        } catch (error) {
-          console.error('Error creating conversation:', error)
-          throw new Error('Failed to create conversation')
-        }
-      } else {
-        // We already have a conversation ID, add message directly to Convex
-        console.log('Adding user message to existing conversation:', conversationId)
-        await addMessage(conversationId, userMessage)
-      }
-      
-      // Process with AI after message is stored
-      await processAIResponse(conversationId, userMessage)
-      
-    } catch (error) {
-      console.error('Error:', error)
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant' as const,
-        content: 'Sorry, I encountered an error processing your request.',
-      }
-      if (currentConversationId) {
-        await addMessage(currentConversationId, errorMessage)
-      }
-      else {
-        if (error instanceof Error) {
-          setError(error.message)
-        } else {
-          setError('An unknown error occurred.')
-        }
-      }
-    } finally {
-      setLoading(false)
-    }
-  }, [input, isLoading, createTitleFromInput, currentConversationId, createNewConversation, addMessage, processAIResponse, setLoading]);
-
-  const handleNewChat = useCallback(() => {
-    createNewConversation()
-  }, [createNewConversation]);
-
-  const handleDeleteChat = useCallback(async (id: string) => {
-    await deleteConversation(id)
-  }, [deleteConversation]);
-
-  const handleUpdateChatTitle = useCallback(async (id: string, title: string) => {
-    await updateConversationTitle(id, title)
-    setEditingChatId(null)
-    setEditingTitle('')
-  }, [updateConversationTitle]);
-
+function LandingPage() {
   return (
-    <div className="relative flex h-screen bg-gray-900">
-      {/* Settings Button */}
-      <div className="absolute z-50 top-5 right-5">
-        <button
-          onClick={() => setIsSettingsOpen(true)}
-          className="flex items-center justify-center w-10 h-10 text-white transition-opacity rounded-full bg-gradient-to-r from-orange-500 to-red-600 hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-orange-500"
-        >
-          <Settings className="w-5 h-5" />
-        </button>
-      </div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
+      <header className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50">
+        <div className="container px-6 py-4 mx-auto">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold text-white">Ground Game Guidance</h1>
+            <button className="px-6 py-2 text-sm font-semibold text-white transition-all duration-200 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-lg hover:shadow-blue-500/30">
+              Join Now
+            </button>
+          </div>
+        </div>
+      </header>
 
-      {/* Sidebar */}
-      <Sidebar 
-        conversations={conversations}
-        currentConversationId={currentConversationId}
-        handleNewChat={handleNewChat}
-        setCurrentConversationId={setCurrentConversationId}
-        handleDeleteChat={handleDeleteChat}
-        editingChatId={editingChatId}
-        setEditingChatId={setEditingChatId}
-        editingTitle={editingTitle}
-        setEditingTitle={setEditingTitle}
-        handleUpdateChatTitle={handleUpdateChatTitle}
-      />
+      <section className="px-6 pt-32 pb-20 bg-gradient-to-br from-slate-900 via-blue-900/20 to-slate-900">
+        <div className="container mx-auto text-center">
+          <div className="max-w-4xl mx-auto">
+            <h2 className="mb-6 text-5xl font-bold leading-tight text-white md:text-6xl">
+              Join The Movement
+            </h2>
+            <p className="mb-10 text-xl text-slate-300 md:text-2xl">
+              A welcoming community dedicated to personal growth, healing, and collective empowerment through trauma-informed support and guidance.
+            </p>
+            <button className="px-10 py-4 text-lg font-semibold text-white transition-all duration-200 transform rounded-lg shadow-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/40">
+              Join Now
+            </button>
+          </div>
+        </div>
+      </section>
 
-      {/* Main Content */}
-      <div className="flex flex-col flex-1">
-        <TopBanner />
-        {error && (
-          <p className="w-full max-w-3xl p-4 mx-auto font-bold text-orange-500">{error}</p>
-        )}
-        {currentConversationId ? (
-          <>
-            {/* Messages */}
-            <div
-              ref={messagesContainerRef}
-              className="flex-1 pb-24 overflow-y-auto messages-container"
-            >
-              <div className="w-full max-w-3xl px-4 mx-auto">
-                {[...messages, pendingMessage]
-                  .filter((message): message is Message => message !== null)
-                  .map((message) => (
-                    <ChatMessage
-                      key={message.id}
-                      message={message}
-                      isStreaming={message === pendingMessage && isLoading}
-                    />
-                  ))}
-                {isLoading && <LoadingIndicator />}
+      <section className="px-6 py-20 bg-slate-800/50">
+        <div className="container mx-auto">
+          <h3 className="mb-12 text-4xl font-bold text-center text-white">
+            Choose Your Path
+          </h3>
+          <div className="grid gap-8 md:grid-cols-3">
+            <div className="p-8 transition-all duration-300 border rounded-2xl bg-slate-900/50 border-slate-700/50 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 hover:scale-105">
+              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-6 rounded-full bg-blue-600/20">
+                <Users className="w-8 h-8 text-blue-400" />
               </div>
+              <h4 className="mb-4 text-2xl font-bold text-center text-white">
+                Community
+              </h4>
+              <div className="mb-6 text-center">
+                <span className="text-5xl font-bold text-white">$29</span>
+                <span className="text-slate-400">/month</span>
+              </div>
+              <ul className="mb-8 space-y-3">
+                <li className="flex items-start text-slate-300">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-400" />
+                  <span>Access to supportive community forums</span>
+                </li>
+                <li className="flex items-start text-slate-300">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-400" />
+                  <span>Monthly group sessions</span>
+                </li>
+                <li className="flex items-start text-slate-300">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-400" />
+                  <span>Resource library access</span>
+                </li>
+                <li className="flex items-start text-slate-300">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-400" />
+                  <span>Safe and welcoming space</span>
+                </li>
+              </ul>
+              <button className="w-full py-3 font-semibold text-white transition-all duration-200 border-2 rounded-lg border-blue-600/50 hover:bg-blue-600/20 hover:border-blue-500">
+                Get Started
+              </button>
             </div>
 
-            {/* Input */}
-            <ChatInput 
-              input={input}
-              setInput={setInput}
-              handleSubmit={handleSubmit}
-              isLoading={isLoading}
-            />
-          </>
-        ) : (
-          <WelcomeScreen 
-            input={input}
-            setInput={setInput}
-            handleSubmit={handleSubmit}
-            isLoading={isLoading}
-          />
-        )}
-      </div>
+            <div className="relative p-8 transition-all duration-300 border-2 rounded-2xl bg-gradient-to-br from-blue-900/30 to-slate-900/50 border-blue-500/50 hover:border-blue-400/70 hover:shadow-2xl hover:shadow-blue-500/20 hover:scale-105">
+              <div className="absolute px-4 py-1 text-sm font-semibold text-white transform -translate-x-1/2 rounded-full -top-3 left-1/2 bg-gradient-to-r from-blue-600 to-blue-700">
+                Most Popular
+              </div>
+              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-6 rounded-full bg-blue-500/30">
+                <Shield className="w-8 h-8 text-blue-300" />
+              </div>
+              <h4 className="mb-4 text-2xl font-bold text-center text-white">
+                All Access
+              </h4>
+              <div className="mb-6 text-center">
+                <span className="text-5xl font-bold text-white">$79</span>
+                <span className="text-slate-400">/month</span>
+              </div>
+              <ul className="mb-8 space-y-3">
+                <li className="flex items-start text-slate-200">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-300" />
+                  <span>Everything in Community tier</span>
+                </li>
+                <li className="flex items-start text-slate-200">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-300" />
+                  <span>Weekly guided sessions</span>
+                </li>
+                <li className="flex items-start text-slate-200">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-300" />
+                  <span>Priority support access</span>
+                </li>
+                <li className="flex items-start text-slate-200">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-300" />
+                  <span>Exclusive workshops and events</span>
+                </li>
+                <li className="flex items-start text-slate-200">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-300" />
+                  <span>Personalized growth tracking</span>
+                </li>
+              </ul>
+              <button className="w-full py-3 font-semibold text-white transition-all duration-200 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-lg hover:shadow-blue-500/30">
+                Get Started
+              </button>
+            </div>
 
-      {/* Settings Dialog */}
-      <SettingsDialog
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+            <div className="p-8 transition-all duration-300 border rounded-2xl bg-slate-900/50 border-slate-700/50 hover:border-blue-500/50 hover:shadow-xl hover:shadow-blue-500/10 hover:scale-105">
+              <div className="flex items-center justify-center w-16 h-16 mx-auto mb-6 rounded-full bg-blue-600/20">
+                <Heart className="w-8 h-8 text-blue-400" />
+              </div>
+              <h4 className="mb-4 text-2xl font-bold text-center text-white">
+                Single Session
+              </h4>
+              <div className="mb-6 text-center">
+                <span className="text-5xl font-bold text-white">$60</span>
+                <span className="text-slate-400">/session</span>
+              </div>
+              <ul className="mb-8 space-y-3">
+                <li className="flex items-start text-slate-300">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-400" />
+                  <span>One-time guided session</span>
+                </li>
+                <li className="flex items-start text-slate-300">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-400" />
+                  <span>Personalized attention</span>
+                </li>
+                <li className="flex items-start text-slate-300">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-400" />
+                  <span>No commitment required</span>
+                </li>
+                <li className="flex items-start text-slate-300">
+                  <Check className="flex-shrink-0 w-5 h-5 mr-3 text-blue-400" />
+                  <span>Perfect for trying us out</span>
+                </li>
+              </ul>
+              <button className="w-full py-3 font-semibold text-white transition-all duration-200 border-2 rounded-lg border-blue-600/50 hover:bg-blue-600/20 hover:border-blue-500">
+                Book Session
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-6 py-20 bg-slate-900/30">
+        <div className="container mx-auto">
+          <h3 className="mb-4 text-4xl font-bold text-center text-white">
+            Our Commitment to You
+          </h3>
+          <p className="max-w-3xl mx-auto mb-16 text-xl text-center text-slate-300">
+            We create a safe, supportive environment where everyone can heal and grow at their own pace
+          </p>
+          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-4">
+            <div className="p-6 text-center transition-all duration-200 border rounded-xl bg-slate-800/30 border-slate-700/50 hover:border-blue-500/30 hover:bg-slate-800/50">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 rounded-full bg-blue-600/20">
+                <Shield className="w-6 h-6 text-blue-400" />
+              </div>
+              <h4 className="mb-3 text-xl font-bold text-white">Trauma-Informed</h4>
+              <p className="text-slate-400">
+                Every interaction is designed with sensitivity, respect, and understanding of healing journeys
+              </p>
+            </div>
+
+            <div className="p-6 text-center transition-all duration-200 border rounded-xl bg-slate-800/30 border-slate-700/50 hover:border-blue-500/30 hover:bg-slate-800/50">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 rounded-full bg-blue-600/20">
+                <Heart className="w-6 h-6 text-blue-400" />
+              </div>
+              <h4 className="mb-3 text-xl font-bold text-white">Welcoming Space</h4>
+              <p className="text-slate-400">
+                A judgment-free environment where you can be authentic and feel accepted exactly as you are
+              </p>
+            </div>
+
+            <div className="p-6 text-center transition-all duration-200 border rounded-xl bg-slate-800/30 border-slate-700/50 hover:border-blue-500/30 hover:bg-slate-800/50">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 rounded-full bg-blue-600/20">
+                <Users className="w-6 h-6 text-blue-400" />
+              </div>
+              <h4 className="mb-3 text-xl font-bold text-white">Community Support</h4>
+              <p className="text-slate-400">
+                Connect with others who understand your journey and share in collective growth and healing
+              </p>
+            </div>
+
+            <div className="p-6 text-center transition-all duration-200 border rounded-xl bg-slate-800/30 border-slate-700/50 hover:border-blue-500/30 hover:bg-slate-800/50">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-4 rounded-full bg-blue-600/20">
+                <Check className="w-6 h-6 text-blue-400" />
+              </div>
+              <h4 className="mb-3 text-xl font-bold text-white">Empowerment Focus</h4>
+              <p className="text-slate-400">
+                Tools and guidance designed to help you reclaim your power and create positive change
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer className="px-6 py-12 border-t bg-slate-900 border-slate-800">
+        <div className="container mx-auto">
+          <div className="grid gap-8 mb-8 md:grid-cols-3">
+            <div>
+              <h5 className="mb-4 text-xl font-bold text-white">Ground Game Guidance</h5>
+              <p className="text-slate-400">
+                Building a community of healing, growth, and empowerment through trauma-informed support.
+              </p>
+            </div>
+            <div>
+              <h5 className="mb-4 text-lg font-semibold text-white">Quick Links</h5>
+              <ul className="space-y-2 text-slate-400">
+                <li><a href="#" className="transition-colors hover:text-blue-400">About Us</a></li>
+                <li><a href="#" className="transition-colors hover:text-blue-400">Our Approach</a></li>
+                <li><a href="#" className="transition-colors hover:text-blue-400">Community Guidelines</a></li>
+                <li><a href="#" className="transition-colors hover:text-blue-400">Contact</a></li>
+              </ul>
+            </div>
+            <div>
+              <h5 className="mb-4 text-lg font-semibold text-white">Resources</h5>
+              <ul className="space-y-2 text-slate-400">
+                <li><a href="#" className="transition-colors hover:text-blue-400">Getting Started</a></li>
+                <li><a href="#" className="transition-colors hover:text-blue-400">FAQs</a></li>
+                <li><a href="#" className="transition-colors hover:text-blue-400">Privacy Policy</a></li>
+                <li><a href="#" className="transition-colors hover:text-blue-400">Terms of Service</a></li>
+              </ul>
+            </div>
+          </div>
+          <div className="pt-8 text-center border-t border-slate-800">
+            <p className="text-slate-500">
+              &copy; 2024 Ground Game Guidance. All rights reserved. Your journey to healing and empowerment starts here.
+            </p>
+          </div>
+        </div>
+      </footer>
     </div>
   )
 }
 
 export const Route = createFileRoute('/')({
-  component: Home,
+  component: LandingPage,
 })
