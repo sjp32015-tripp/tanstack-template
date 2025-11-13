@@ -1,15 +1,47 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Users, Shield, Heart, Check } from 'lucide-react'
+import { useState } from 'react'
 
 function LandingPage() {
+  const [loading, setLoading] = useState<string | null>(null)
+
+  const handleCheckout = async (priceId: string) => {
+    setLoading(priceId)
+    try {
+      const response = await fetch('/.netlify/functions/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ priceId }),
+      })
+
+      const data = await response.json()
+
+      if (data.url) {
+        window.location.href = data.url
+      } else {
+        console.error('No checkout URL returned')
+        setLoading(null)
+      }
+    } catch (error) {
+      console.error('Error creating checkout session:', error)
+      setLoading(null)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900">
       <header className="fixed top-0 left-0 right-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700/50">
         <div className="container px-6 py-4 mx-auto">
           <div className="flex items-center justify-between">
             <h1 className="text-2xl font-bold text-white">Ground Game Guidance</h1>
-            <button className="px-6 py-2 text-sm font-semibold text-white transition-all duration-200 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-lg hover:shadow-blue-500/30">
-              Join Now
+            <button 
+              onClick={() => handleCheckout('prod_TPl0dYFihHbEDo')}
+              disabled={loading !== null}
+              className="px-6 py-2 text-sm font-semibold text-white transition-all duration-200 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-lg hover:shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading === 'prod_TPl0dYFihHbEDo' ? 'Loading...' : 'Join Now'}
             </button>
           </div>
         </div>
@@ -24,8 +56,12 @@ function LandingPage() {
             <p className="mb-10 text-xl text-slate-300 md:text-2xl">
               A welcoming community dedicated to personal growth, healing, and collective empowerment through trauma-informed support and guidance.
             </p>
-            <button className="px-10 py-4 text-lg font-semibold text-white transition-all duration-200 transform rounded-lg shadow-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/40">
-              Join Now
+            <button 
+              onClick={() => handleCheckout('prod_TPl0dYFihHbEDo')}
+              disabled={loading !== null}
+              className="px-10 py-4 text-lg font-semibold text-white transition-all duration-200 transform rounded-lg shadow-xl bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:scale-105 hover:shadow-2xl hover:shadow-blue-500/40 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading === 'prod_TPl0dYFihHbEDo' ? 'Loading...' : 'Join Now'}
             </button>
           </div>
         </div>
@@ -66,8 +102,12 @@ function LandingPage() {
                   <span>Safe and welcoming space</span>
                 </li>
               </ul>
-              <button className="w-full py-3 font-semibold text-white transition-all duration-200 border-2 rounded-lg border-blue-600/50 hover:bg-blue-600/20 hover:border-blue-500">
-                Get Started
+              <button 
+                onClick={() => handleCheckout('prod_TPduE2OMGJTf4K')}
+                disabled={loading !== null}
+                className="w-full py-3 font-semibold text-white transition-all duration-200 border-2 rounded-lg border-blue-600/50 hover:bg-blue-600/20 hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading === 'prod_TPduE2OMGJTf4K' ? 'Loading...' : 'Get Started'}
               </button>
             </div>
 
@@ -107,8 +147,12 @@ function LandingPage() {
                   <span>Personalized growth tracking</span>
                 </li>
               </ul>
-              <button className="w-full py-3 font-semibold text-white transition-all duration-200 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-lg hover:shadow-blue-500/30">
-                Get Started
+              <button 
+                onClick={() => handleCheckout('prod_TPl0dYFihHbEDo')}
+                disabled={loading !== null}
+                className="w-full py-3 font-semibold text-white transition-all duration-200 rounded-lg bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-500 hover:to-blue-600 hover:shadow-lg hover:shadow-blue-500/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading === 'prod_TPl0dYFihHbEDo' ? 'Loading...' : 'Get Started'}
               </button>
             </div>
 
@@ -141,8 +185,12 @@ function LandingPage() {
                   <span>Perfect for trying us out</span>
                 </li>
               </ul>
-              <button className="w-full py-3 font-semibold text-white transition-all duration-200 border-2 rounded-lg border-blue-600/50 hover:bg-blue-600/20 hover:border-blue-500">
-                Book Session
+              <button 
+                onClick={() => handleCheckout('prod_TPnDBSWCRcnd20')}
+                disabled={loading !== null}
+                className="w-full py-3 font-semibold text-white transition-all duration-200 border-2 rounded-lg border-blue-600/50 hover:bg-blue-600/20 hover:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading === 'prod_TPnDBSWCRcnd20' ? 'Loading...' : 'Book Session'}
               </button>
             </div>
           </div>
